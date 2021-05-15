@@ -1,0 +1,21 @@
+---
+title: "Citation Example"
+author: "Dr. F.J. Rodenburg"
+output: pdf_document
+bibliography: citations.bib
+csl: nature.csl
+---
+
+# Introduction
+
+SARS-CoV-2 can survive for up to 28 days on surfaces.[@surfacesurvival] Yet, as of writing this article, the contribution of surface contamination to the spread of SARS-CoV-2 remains poorly understood.[@surfaceinfection]
+
+You can also cite two papers at once, by separating them with a semi-colon.
+
+This sentence has two citations.[@surfacesurvival; @surfaceinfection]
+
+# Methods
+
+Linear mixed effects models were fitted using the `lme4` package in R.[@lme4]
+
+# References
