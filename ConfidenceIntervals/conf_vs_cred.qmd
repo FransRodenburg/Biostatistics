@@ -1,0 +1,411 @@
+---
+title: "Confidence Intervals vs Credible Intervals"
+author: "Dr. F.J. Rodenburg"
+format: pdf
+editor: visual
+---
+
+```{r setup, include = FALSE}
+library("bayestestR") # describe_posterior function
+library("boot")       # bootstrapping
+library("broom")      # tidy function
+library("gridExtra")  # grid.arrange function
+library("ISLR")       # Default data
+library("lme4")       # Mixed models, sleepstudy data
+library("MASS")       # warmpbreaks data, GAGurine data
+library("mlbench")    # BostonHousing data
+library("rstanarm")   # Bayesian regression modelling
+library("sfsmisc")    # eaxis function
+library("sjPlot")     # plot_model function
+```
+
+## Ordinary Linear Model (default priors)
+
+```{r OLS, cache = TRUE, include = FALSE, include = FALSE}
+data("BostonHousing")
+
+# Omit highly colinear terms
+bost <- BostonHousing[, !(colnames(BostonHousing) %in% c("tax", "nox"))]
+
+# Fit a frequentist linear model
+model_freq <- lm(medv ~ ., data = bost)
+
+# Fit a Bayesian linear model
+model_bayes <- stan_glm(medv ~ ., data = bost, seed = 1234)
+summary(model_bayes, digits = 3)
+
+# Frequentist confidence intervals
+round(confint(model_freq), 2)
+
+# Bayesian credible intervals
+describe_posterior(model_bayes)
+
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- confint(model_freq)
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[, 1], y0 = nrow(CI):1 - 0.1, x1 = CR[, 2], y1 = nrow(CI):1 - 0.1,
+         col = "red")
+```
+
+## Ordinary Linear Model ($t$-distributed priors)
+
+```{r altprior, cache = TRUE, include = FALSE}
+data("BostonHousing")
+
+# Omit highly colinear terms
+bost <- BostonHousing[, !(colnames(BostonHousing) %in% c("tax", "nox"))]
+model_freq <- lm(medv ~ ., data = bost)
+tidy(model_freq)
+model_bayes <- stan_glm(medv ~ ., data = bost, seed = 1234, 
+                        prior = student_t(df = 7), 
+                        prior_intercept = student_t(df = 7),
+                        chains = 10,
+                        iter = 12000,
+                        warmup = 2000,
+                        thin = 10)
+summary(model_bayes, digits = 3)
+
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- confint(model_freq)
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[, 1], y0 = nrow(CI):1 - 0.1, x1 = CR[, 2], y1 = nrow(CI):1 - 0.1,
+         col = "red")
+```
+
+## Gamma GLM
+
+```{r Gamma, cache = TRUE, include = FALSE}
+data("GAGurine")
+
+model_freq <- glm(GAG ~ Age, data = GAGurine, family = "Gamma")
+tidy(model_freq)
+P1 <- plot_model(model_freq, type = "pred", terms = "Age")
+
+model_bayes <- stan_glm(GAG ~ Age, data = GAGurine, seed = 1234,
+                        family = Gamma())
+
+P2 <- plot_model(model_bayes, type = "pred", terms = "Age")
+grid.arrange(P1, P2, ncol = 2)
+summary(model_bayes, digits = 3)
+
+posterior_interval(model_bayes, prob = 0.95)[1:2, ]
+confint(model_freq)
+
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- confint(model_freq)
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[, 1], y0 = nrow(CI):1 - 0.01, 
+         x1 = CR[, 2], y1 = nrow(CI):1 - 0.01, col = "red")
+```
+
+## Poisson GLM
+
+```{r Poisson, cache = TRUE, include = FALSE}
+data("warpbreaks")
+model_freq <- glm(breaks ~ wool * tension, data = warpbreaks, family = "poisson")
+tidy(model_freq)
+model_bayes <- stan_glm(breaks ~ wool * tension, data = warpbreaks, seed = 1234, 
+                        family = poisson())
+summary(model_bayes, digits = 3)
+
+describe_posterior(model_bayes)
+suppressMessages(confint(model_freq))
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- suppressMessages(confint(model_freq))
+
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[, 1], y0 = nrow(CI):1 - 0.1, x1 = CR[, 2], y1 = nrow(CI):1 - 0.1,
+         col = "red")
+```
+
+## Negative Binomial GLM
+
+```{r nbinom, cache = TRUE, include = FALSE}
+data("warpbreaks")
+model_freq <- glm.nb(breaks ~ wool * tension, data = warpbreaks)
+tidy(model_freq)
+model_bayes <- stan_glm.nb(breaks ~ wool * tension, data = warpbreaks, seed = 1234)
+summary(model_bayes, digits = 3)
+
+describe_posterior(model_bayes)
+suppressMessages(confint(model_freq))
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- suppressMessages(confint(model_freq))
+
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[1:nrow(CI), 1], y0 = nrow(CI):1 - 0.1, 
+         x1 = CR[1:nrow(CI), 2], y1 = nrow(CI):1 - 0.1,
+         col = "red")
+```
+
+Frequentist confidence intervals are similar, but appear optimistically narrow.
+
+## Negative Binomial GLM (bootstrapped CI)
+
+```{r bootnbinom, cache = TRUE, include = FALSE}
+set.seed(1234)
+f <- function(data, i){
+  coef(glm.nb(breaks ~ wool * tension, data = data[i, ]))
+}
+B <- boot(warpbreaks, f, R = 1000)
+
+BCI <- matrix(nrow = length(coef(model_freq)), ncol = 2)
+for(i in 1:nrow(BCI)){
+  BCI[i, ] <- boot.ci(B, index = i, type = "norm")$normal[, 2:3]
+}
+round(BCI, 2)
+describe_posterior(model_bayes)
+
+CI[] <- BCI
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[1:nrow(CI), 1], y0 = nrow(CI):1 - 0.1, 
+         x1 = CR[1:nrow(CI), 2], y1 = nrow(CI):1 - 0.1,
+         col = "red")
+```
+
+Much less so. This is more computationally intensive, but still less than the Bayesian model.
+
+## Logistic Regression
+
+```{r binom, cache = TRUE, include = FALSE}
+data("Default", package = "ISLR")
+Default$balance <- scale(Default$balance)
+Default$income  <- scale(Default$income)
+
+t0 <- Sys.time()
+model_freq <- glm(default ~ student + balance + income, 
+                  family = "binomial", data = Default)
+t1 <- Sys.time()
+model_bayes <- stan_glm(default ~ student + balance + income, 
+                        data = Default, seed = 1234, family = binomial())
+t2 <- Sys.time()
+
+t1 - t0
+t2 - t1
+summary(model_bayes, digits = 3)
+
+describe_posterior(model_bayes)
+round(confint(model_freq), 2)
+
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- confint(model_freq)
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[1:nrow(CI), 1], y0 = nrow(CI):1 - 0.05, 
+         x1 = CR[1:nrow(CI), 2], y1 = nrow(CI):1 - 0.05,
+         col = "red")
+```
+
+These differences have no practical meaning.
+
+## Mixed Model
+
+```{r LMM, cache = TRUE, include = FALSE}
+data("sleepstudy")
+model_freq <- lmer(Reaction ~ Days + (Days | Subject), sleepstudy)
+
+model_bayes <- stan_lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy,
+                         seed = 1234)
+summary(model_bayes, digits = 3)
+
+describe_posterior(model_bayes)
+confint(model_freq)
+
+CR <- describe_posterior(model_bayes)[, 4:5]
+CI <- confint(model_freq)[5:6, ]
+```
+
+```{r, echo = FALSE, fig.height = 2.5}
+par(family = "sans", mar = c(3, 7, 3, 3) + 0.1)
+plot(NA, ylim = c(1, nrow(CI)), xlim = range(c(unlist(CI), unlist(CR))), 
+     axes = FALSE, xlab = "Value", ylab = "")
+title(main = bquote(bold("Frequentist Confidence Intervals") ~ 
+                      phantom("vs") ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8)
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~
+                      "vs" ~
+                      phantom(bold("Bayesian Credible Intervals"))), 
+      cex.main = 0.8, col.main = "darkgrey")
+title(main = bquote(phantom(bold("Frequentist Confidence Intervals")) ~ 
+                      phantom("vs") ~
+                      bold("Bayesian Credible Intervals")), 
+      cex.main = 0.8, col.main = "red")
+eaxis(1, cex.axis = 0.8)
+par(family = "mono")
+axis(2, 1:nrow(CI), rev(rownames(CI)), las = 1, cex.axis = 0.8)
+
+abline(v = 0, col = "grey90")
+
+segments(x0 = CI[, 1], y0 = nrow(CI):1, x1 = CI[, 2], y1 = nrow(CI):1)
+segments(x0 = CR[1:nrow(CI), 1], y0 = nrow(CI):1 - 0.01, 
+         x1 = CR[1:nrow(CI), 2], y1 = nrow(CI):1 - 0.01,
+         col = "red")
+```
