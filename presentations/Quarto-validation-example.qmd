@@ -1,0 +1,153 @@
+---
+title: "Quarto Validation Example"
+author:
+ - "Validator: [name]"
+ - "Reviewer: [name]"
+number-sections: true
+---
+
+```{r}
+#| include: false
+
+# Dependencies
+library("dplyr") # case_when() function
+library("knitr") # kable() function
+library("pROC")  # auc() function
+
+# Helper functions:
+source("functions/helperfunctions.R") # style_dp() function
+```
+
+```{r}
+#| label: "Data preperation"
+#| include: false
+
+DF <- read.csv("data/mock-data.csv")
+
+# There is no model in the mock data (yet),
+# so let's generate some random 'model' PDs:
+set.seed(2025)
+DF$PD <- round(rbeta(nrow(DF), shape1 = 1, shape2 = 15), 4)
+
+# Define PiT and TtC
+TtC <- DF[DF$snapshot_date != "2024Q4", ]
+PiT <- DF[DF$snapshot_date == "2024Q4", ]
+```
+
+```{r}
+#| label: "Performance assessment"
+#| include: false
+
+# Discriminatory power (TtC)
+## Compute ROC with bootstrap 95% CI (B = 20,000)
+ROC_TtC <- roc(TtC$default, TtC$PD, ci = TRUE, boot.n = 20000, ci.alpha = 0.95)
+
+## Point estimate and 95% CI
+Gini_TtC    <- 2 * auc(ROC_TtC) - 1
+Gini_CI_TtC <- 2 * ROC_TtC$ci - 1  # Transform AUC CI to Gini CI
+
+# Override result?
+override_TtC <- FALSE
+Gini_TtC_OR   <- "inconclusive"
+
+# Discriminatory power (PiT)
+## Compute ROC with bootstrap 95% CI (B = 20,000)
+ROC_PiT <- roc(PiT$default, PiT$PD, ci = TRUE, boot.n = 20000, ci.alpha = 0.95)
+
+## Point estimate and 95% CI
+Gini_PiT    <- 2 * auc(ROC_PiT) - 1
+Gini_CI_PiT <- 2 * ROC_PiT$ci - 1  # Transform AUC CI to Gini CI
+
+# Override result?
+override_PiT <- TRUE
+Gini_PiT_OR   <- "inconclusive"
+```
+
+```{r}
+#| label: "Rendering functions"
+#| include: false
+
+# TtC
+if(!override_TtC){
+  DP_TtC <- case_when(
+    Gini_TtC < 0.5                    ~ "poor",
+    Gini_TtC >= 0.5 & Gini_TtC < 0.75 ~ "moderate",
+    Gini_TtC >= 0.75                  ~ "good",
+    TRUE                              ~ "inconclusive"
+  )
+} else{
+  DP_TtC <- Gini_TtC_OR
+}
+
+# Inconclusive due to CI width?
+if(Gini_CI_TtC[1] < 0.5 & Gini_CI_TtC[2] >= 0.75){
+  DP_TtC <- "inconclusive"
+}
+
+# PiT
+if(!override_PiT){
+  DP_PiT <- case_when(
+    Gini_PiT < 0.5                    ~ "poor",
+    Gini_PiT >= 0.5 & Gini_PiT < 0.75 ~ "moderate",
+    Gini_PiT >= 0.75                  ~ "good",
+    TRUE                              ~ "inconclusive"
+  )
+} else{
+  DP_PiT <- Gini_PiT_OR
+}
+
+# Inconclusive due to CI width?
+if(Gini_CI_PiT[1] < 0.5 & Gini_CI_PiT[2] >= 0.75){
+  DP_PiT <- "inconclusive"
+}
+```
+
+## Front Page {.unnumbered}
+
+* The example model is covers a [type] portfolio.
+* MV independently assessed x, y and z.
+* Discriminatory power is `r style_dp(DP_TtC)` TtC and `r style_dp(DP_PiT)` in the PiT period. See @sec-DP for details.
+* Calibration accuracy is ... TtC and ... in the PiT period. See @sec-CA for details.
+* ...
+
+\clearpage
+
+## Model Information
+
+...
+
+## Identified Deficiencies
+
+...
+
+\clearpage
+
+## Model Assessment {#sec-MP}
+
+### Discriminatory Power {#sec-DP}
+
+Discriminatory power is `r style_dp(DP_TtC)`, based on [justification]. MV used the Gini coefficient, because the outcome is a binary variable. @tbl-DPtab shows the results of MV's assessment for the discriminatory power in the TtC and PiT period.
+
+```{r}
+#| label: tbl-DPtab
+#| tbl-cap: "Bootstrapped Gini coefficient with 95% confidence interval."
+#| message: false
+#| warning: false
+#| echo: false
+
+gini_fmt_ttc <- sprintf("%.3f (%.3f–%.3f)", Gini_TtC, Gini_CI_TtC[1], Gini_CI_TtC[3])
+gini_fmt_pit <- sprintf("%.3f (%.3f–%.3f)", Gini_PiT, Gini_CI_PiT[1], Gini_CI_PiT[3])
+
+# Summary table
+gini_tbl <- data.frame(
+  Period   = c("TTC", "PIT"),
+  Test     = "Gini",
+  Estimate = c(gini_fmt_ttc, gini_fmt_pit)
+)
+
+kable(gini_tbl, align = "lll")
+```
+
+### Calibration Accuracy {#sec-CA}
+
+...
