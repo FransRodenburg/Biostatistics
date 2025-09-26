@@ -1,0 +1,173 @@
+---
+title: "Loops"
+author: "Dr. F.J. Rodenburg"
+format: revealjs
+editor: visual
+---
+
+## Quarto
+
+```{r}
+# Fill a matrix with multiplication table (nested loop)
+M <- matrix(NA, nrow = 3, ncol = 3)
+for(i in 1:3){
+  for(j in 1:3){
+    M[i, j] <- (i - 1) * j
+  }
+}
+M
+
+# More realistic use case, convert a precision matrix into a matrix of
+# partial correlations:
+p <- 3
+Sigma <- matrix(c(4,  2, -1,
+                  2,  5,  0,
+                 -1,  0,  3), nrow = p, byrow = TRUE)
+
+D <- diag(1 / sqrt(diag(Sigma)))
+R <- D %*% Sigma %*% D # Correlation matrix
+
+Theta <- solve(Sigma) # Precision matrix
+
+pcor <- matrix(NA, nrow = p, ncol = p)
+for(i in 1:p){
+  for(j in 1:p){
+    if(i == j){
+      pcor[i, j] <- 1
+    } else {
+      pcor[i, j] <- -Theta[i, j] / sqrt(Theta[i, i] * Theta[j, j])
+    }
+  }
+}
+cat("Correlation matrix:")
+print(round(R, 3))
+cat("Partial correlation matrix")
+print(round(pcor, 3))
+
+# Simulate random numbers until a condition is met (while loop + break)
+i <- 0
+while(TRUE){
+  x <- runif(1)
+  i <- i + 1
+  if(x < 0.05){
+    cat("Criterion reached, x =", x, "\nIterations:", i, "\n")
+    break
+  }
+}
+
+# Skip certain values (next)
+for(i in 1:10){
+  if(i %% 3 == 0) next
+  cat(i, " ")
+}
+
+# Progress counter
+n <- 100
+for(i in 1:n){
+  Sys.sleep(0.02)
+  if(10 * i/n == round(10 * i/n)){
+    cat("Completed", round(i/n * 100, 1), "%\n")
+  }
+}
+
+# Taylor series (e.g., in likelihood approximation)
+# log(1 + x) = x^1/1 - x^2/2 + x^3/3 - ..., |x| < 1
+tol  <- 1e-6
+x    <- 0.5
+k    <- 0
+term <- 1 # arbitrary placeholder
+out  <- 0
+while(abs(term) > tol) {
+  k    <- k + 1
+  term <- (-1)^(k + 1) * x^k / k
+  out  <- out + term
+}
+cat("Convergence reached after", k, "iterations",
+    "\nApproximation: ", out, 
+    "\nFor comparison, log(1.5) = ", log(1.5))
+```
+
+```{python}
+import math
+import random
+import time
+import numpy as np
+
+# Fill a matrix with multiplication table (nested loop) ---
+M = [[None for _ in range(3)] for _ in range(3)]
+for i in range(1, 4):
+    for j in range(1, 4):
+        M[i - 1][j - 1] = (i - 1) * j
+print("Matrix M:")
+for row in M:
+    print(row)
+    
+# More realistic use case, convert a precision matrix into a matrix of
+# partial correlations:
+p = 3
+Sigma = np.array([
+    [4.0,  2.0, -1.0],
+    [2.0,  5.0,  0.0],
+    [-1.0, 0.0,  3.0]
+])
+
+
+D = np.diag(1.0 / np.sqrt(np.diag(Sigma)))
+R = D @ Sigma @ D # Correlation matrix
+
+Theta = np.linalg.inv(Sigma) # Precision matrix
+
+# Partial correlation matrix computed with a nested loop
+pcor = np.full((p, p), np.nan)
+for i in range(p):
+    for j in range(p):
+        if i == j:
+            pcor[i, j] = 1.0
+        else:
+            pcor[i, j] = -Theta[i, j] / np.sqrt(Theta[i, i] * Theta[j, j])
+
+# Print rounded results like in the R example
+print("Correlation matrix (R):")
+print(np.round(R, 3))
+print("\nPartial correlation matrix (pcor):")
+print(np.round(pcor, 3))
+
+
+# Run until a condition is met (while + break)
+i = 0
+while True:
+    x = random.random()  # uniform(0,1)
+    i += 1
+    if x < 0.05:
+        print(f"Criterion reached, x = {x}\nIterations: {i}")
+        break
+
+# Skip certain values (next / continue)
+for i in range(1, 11):
+    if i % 3 == 0:
+        continue
+    print(i, end=" ")
+print("\n")
+
+# --- Progress counter ---
+n = 100
+for i in range(1, n + 1):
+    time.sleep(0.02)
+    if 10 * i / n == round(10 * i / n):
+        print(f"Completed {round(i / n * 100, 1)} %")
+
+# --- Taylor series approximation of log(1+x) ---
+tol  = 1e-6
+x    = 0.5
+k    = 0
+term = 1  # arbitrary placeholder
+out  = 0
+while abs(term) > tol:
+    k += 1
+    term = (-1)**(k + 1) * x**k / k
+    out += term
+
+print(f"Convergence reached after {k} iterations")
+print(f"Approximation: {out}")
+print(f"For comparison, log(1.5) = {math.log(1.5)}")
+```
