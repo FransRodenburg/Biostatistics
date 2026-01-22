@@ -4,7 +4,7 @@ require("ragg")
 require("sfsmisc")
 
 # Example (fill in 01, 02, or 03)
-DF <- read.csv(paste0("example-data-01.csv"))
+DF <- read.csv(paste0("example-binomial-data-01.csv"))
 # 1: No violations
 # 2: Non-linear (on the scale of eta)
 # 3: Overdispersed
@@ -13,7 +13,7 @@ DF <- read.csv(paste0("example-data-01.csv"))
 bootstrap <- TRUE
 
 # Fit a model
-GLM <- glm(y ~ x, data = DF, family = "poisson")
+GLM <- glm(cbind(y, 10 - y) ~ x, data = DF, family = "binomial")
 
 # Rank-transformed predictions
 yhat     <- fitted(GLM)

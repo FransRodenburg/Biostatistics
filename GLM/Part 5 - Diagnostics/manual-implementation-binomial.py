@@ -10,10 +10,10 @@ from statsmodels.regression.quantile_regression import QuantReg
 from statsmodels.stats.multitest import multipletests
 
 # Data
-path = "example-data-01.csv" # Choose 01, 02, or 03:
-                             #  1. No violations
-                             #  2. Non-linear (on the scale of eta)
-                             #  3. Overdispersed
+path = "example-binomial-data-01.csv" # Choose 01, 02, or 03:
+                                      #  1. No violations
+                                      #  2. Non-linear (on the scale of eta)
+                                      #  3. Overdispersed
 
 # To enable bootstrapped outlier test, set to True. Computationally intensive.
 bootstrap = False
@@ -27,38 +27,37 @@ nu = 3
 
 # Helper functions
 def normrank(x):
-    """Normalized rank in (1..n)/n, ties -> average."""
     r = stats.rankdata(x, method='average')
     return r / len(r)
 
-def fit_poisson_glm(y, X):
-    """Fit Poisson GLM using statsmodels (GLM with Poisson family)."""
-    model = sm.GLM(y, X, family=sm.families.Poisson())
-    res = model.fit()
-    return res
+def fit_binomial_glm(y, n, x):
+    ratio = np.column_stack((y, n - y))
+    model = sm.GLM(ratio, x, family=sm.families.Binomial(link=sm.families.links.Logit()))
+    return model.fit()
 
-def simulate_poisson_from_mu(mu, nsim, rng):
-    """Simulate nsim Poisson datasets given vector mu (n,). Returns array shape (n, nsim)."""
-    n = len(mu)
-    sims = rng.poisson(lam=np.repeat(mu[:, None], nsim, axis=1))
+def simulate_binomial_from_mu(mu, n, nsim, rng):
+    mu = np.asarray(mu)
+    sims = rng.binomial(n=n, p=mu[:, None], size=(len(mu), nsim))
     return sims
+
 
 # Read data
 df = pd.read_csv(path)
 x = df['x'].values
 y = df['y'].values
 n = len(y)
+size = 10 # binomial trials, should be evident from study design
 
 # Fit a GLM
 X        = sm.add_constant(pd.DataFrame({'x': x}))
-GLM      = fit_poisson_glm(y, X)
+GLM      = fit_binomial_glm(y, size, X)
 yhat     = GLM.fittedvalues  # numpy array-like
 yhatrank = normrank(yhat)
 
 # Monte Carlo simulated outcomes
 rng  = np.random.default_rng(seed)
 nsim = nsim
-sim  = simulate_poisson_from_mu(np.asarray(yhat), nsim, rng)  # shape (n, nsim)
+sim  = simulate_binomial_from_mu(np.asarray(yhat), size, nsim, rng)  # shape (n, nsim)
 
 # Simulated randomized residuals
 SRR = np.empty(n, dtype=float)
