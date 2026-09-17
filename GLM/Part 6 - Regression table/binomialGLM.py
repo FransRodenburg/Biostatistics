@@ -12,11 +12,24 @@ GLM = sm.GLM(
     DF["correct"] / 10,
     sm.add_constant(DF["time"]),
     family=sm.families.Binomial(),
-    freq_weights=10
+    freq_weights=np.repeat(10, len(DF))
 ).fit()
 
 # Regression table
 print(GLM.summary2())
+
+# Baseline odds
+odds0 = np.exp(GLM.params.iloc[0])
+print(odds0)
+
+# Multiplicative change in odds
+oddsx = np.exp(GLM.params.iloc[1])
+print(oddsx)
+
+# Probabilities at any given point (e.g., x = 2)
+# Explanation: 1 = use intercept, 2 = value of x, [0] strips the array.
+p = GLM.predict([1, 2])[0]
+print(p)
 
 # Rough measure of overdispersion
 d = GLM.deviance / GLM.df_resid

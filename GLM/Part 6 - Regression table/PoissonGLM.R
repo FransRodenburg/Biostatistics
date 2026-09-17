@@ -7,6 +7,18 @@ GLM <- glm(apples ~ age, data = DF, family = "poisson")
 # Regression table
 summary(GLM)
 
+# Baseline lambda
+exp(coef(GLM)[1])
+
+# Multiplicative change in lambda
+exp(coef(GLM)[2])
+
+# Lambda at any given point (e.g., x = 2)
+exp(coef(GLM)[1] + coef(GLM)[2] * 2)
+
+# ... or just use predict:
+predict(GLM, list(age = 2), type = "response")
+
 # Rough measure of overdispersion
 S <- summary(GLM)
 S$deviance / S$df.residual

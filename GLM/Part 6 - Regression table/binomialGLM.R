@@ -7,6 +7,19 @@ GLM <- glm(cbind(correct, 10 - correct) ~ time, data = DF, family = "binomial")
 # Regression table
 summary(GLM)
 
+# Baseline odds
+exp(coef(GLM)[1])
+
+# Multiplicative change in odds
+exp(coef(GLM)[2])
+
+# Probability at any given point (e.g., x = 2)
+# qlogis = logit, plogis = inverse logit
+plogis(coef(GLM)[1] + coef(GLM)[2] * 2)
+
+# ... or just use predict:
+predict(GLM, list(time = 2), type = "response")
+
 # Rough measure of overdispersion
 S <- summary(GLM)
 S$deviance / S$df.residual

@@ -12,6 +12,23 @@ GLM = sm.GLM(DF['apples'], sm.add_constant(DF['age']), family=sm.families.Poisso
 # Regression table
 print(GLM.summary2())
 
+# Baseline lambda
+lambda0 = np.exp(GLM.params.iloc[0])
+print(lambda0)
+
+# Multiplicative change in lambda
+lambdax = np.exp(GLM.params.iloc[1])
+print(lambdax)
+
+# Lambda at any given point (e.g., x = 2)
+example = lambda0 * lambdax ** 2
+print(example)
+
+# ...or just use the predict function:
+# Explanation: 1 = use intercept, 2 = value of x, [0] strips the array.
+example = GLM.predict([1, 2])[0]
+print(example)
+
 # Rough measure of overdispersion
 d = GLM.deviance / GLM.df_resid
 print(d)
