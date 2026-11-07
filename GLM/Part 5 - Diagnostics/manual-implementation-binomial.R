@@ -1,6 +1,4 @@
-require("car")
 require("qgam")
-require("ragg")
 require("sfsmisc")
 
 # Example (fill in 01, 02, or 03)
@@ -24,11 +22,17 @@ normrank <- function(x){
 }
 yhatrank <- normrank(yhat)
 
+# Two-sided p-value of a simulation test, as in DHARMa
+two_sided <- function(simulated, observed){
+  min(2 * min(mean(simulated <= observed), mean(simulated >= observed)), 1)
+}
+
 # Monte Carlo simulated outcomes
 seed <- 2026
 nsim <- 250  # DHARMa's default
-sim  <- simulate(GLM, nsim = nsim, seed = seed)
-sim  <- matrix(unlist(sim, use.names = FALSE), ncol = nsim)
+set.seed(seed)
+sim  <- simulate(GLM, nsim = nsim)
+sim  <- sapply(sim, function(x) x[, 1]) # Successes only
 
 # Simulated randomized residuals:
 n   <- nrow(DF)
@@ -39,7 +43,7 @@ one  <- numeric(n)
 zero <- numeric(n)
 
 for(i in 1:n){
-  lwr <- mean(sim[i, ] < DF$y[i]) 
+  lwr <- mean(sim[i, ] < DF$y[i])
   upr <- mean(sim[i, ] <= DF$y[i])
   if(upr == 0){
     zero[i] <- 1
@@ -51,14 +55,14 @@ for(i in 1:n){
 }
 
 # DHARMa's distributional test
-KS <- ks.test(SRR, ppoints(n, a = 0))$p.value
+KS <- suppressWarnings(ks.test(SRR, "punif"))$p.value
 
 # DHARMa's overdispersion test
 simVar <- apply(sim, 2, function(x){
   var(x - yhat)
 }) / var(c(sim))
 obsVar <- var(DF$y - yhat) / var(c(sim))
-OD <- mean(obsVar <= simVar)
+OD <- two_sided(simVar, obsVar)
 
 # DHARMa's bootstrapped outlier test
 if(bootstrap == TRUE){
@@ -76,7 +80,7 @@ if(bootstrap == TRUE){
     one_zero_boot[i] <- mean(SRR_boot <= 0 | SRR_boot >= 1)
   }
   one_zero_real <- mean(one + zero)
-  BO <- mean(one_zero_boot >= one_zero_real)
+  BO <- two_sided(one_zero_boot, one_zero_real)
 } else{
   BO <- NA
 }
@@ -90,7 +94,7 @@ par(mfrow = c(1, 2), mar = c(5, 3, 3, 2) + 0.1, mgp = c(2, 0.75, 0))
 # QQ-plot (a = 0 corresponds to what gap::qqunif uses for uniform order stats)
 plot(ppoints(n, a = 0), sort(SRR), pch = 2, las = 1, bty = "n", axes = FALSE,
      xlim = c(0, 1), ylim = c(0, 1),
-     xlab = "Expected", ylab = "Observed", col = "black", 
+     xlab = "Expected", ylab = "Observed", col = "black",
      panel.first = list(abline(a = 0, b = 1, col = "red", lty = 1)))
 eaxis(1, cex.axis = 0.8)
 eaxis(2, cex.axis = 0.8)
@@ -140,8 +144,8 @@ for(i in 1:3){
   }))
   pred     <- predict(Qi, list(yhatrank = newx), se.fit = TRUE)
   pred$fit <- pred$fit + qu[i]
-  lwr      <- pred$fit - pred$se.fit # DHARMa 0.4.7 does not scale by 1.96
-  upr      <- pred$fit + pred$se.fit
+  lwr      <- pred$fit - 1.96 * pred$se.fit
+  upr      <- pred$fit + 1.96 * pred$se.fit
   S        <- summary(Qi)
   pval_right[i]  <- min(p.adjust(c(S$p.pv, S$s.pv), method = "BH"))
   red      <- ifelse(pval_right[i] < 0.05, 1, 0)

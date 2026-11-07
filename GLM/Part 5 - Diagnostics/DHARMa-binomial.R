@@ -10,7 +10,7 @@ DF <- read.csv(paste0("example-binomial-data-01.csv"))
 # 3: Overdispersed
 
 # Fit a GLM
-GLM <- glm(y ~ x, data = DF, family = "binomial")
+GLM <- glm(cbind(y, 10 - y) ~ x, data = DF, family = "binomial")
 
 # DHARMa plots
 simres <- simulateResiduals(GLM)

@@ -1,11 +1,9 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from scipy import stats
-from scipy.stats import norm
 import statsmodels.api as sm
-from patsy import dmatrix
+from patsy import build_design_matrices, dmatrix
 from statsmodels.regression.quantile_regression import QuantReg
 from statsmodels.stats.multitest import multipletests
 
@@ -15,12 +13,12 @@ path = "example-Poisson-data-01.csv" # Choose 01, 02, or 03:
                                      #  2. Non-linear (on the scale of eta)
                                      #  3. Overdispersed
 
-# To enable bootstrapped outlier test, set to True. Computationally intensive.
-bootstrap = False
+# To disable the bootstrapped outlier test, set to False.
+bootstrap = True
 nsim      = 1000
 seed      = 2026
 
-# Python does not have an equivalent of R's qgam, # so I opted for a natural
+# Python does not have an equivalent of R's qgam, so I opted for a natural
 # restricted spline inside QuantReg. For this you must choose an appropriate
 # degrees of freedom (i.e., flexibility). Leave at 3 if unsure.
 nu = 3
@@ -28,7 +26,11 @@ nu = 3
 # Helper functions
 def normrank(x):
     r = stats.rankdata(x, method='average')
-    return r / len(r)
+    return r / r.max()
+
+# Two-sided p-value of a simulation test, as in DHARMa
+def two_sided(simulated, observed):
+    return min(2 * min(np.mean(simulated <= observed), np.mean(simulated >= observed)), 1)
 
 def fit_poisson_glm(y, X):
     model = sm.GLM(y, X, family=sm.families.Poisson())
@@ -79,7 +81,7 @@ KS = ks_p
 flattened_var_sim = np.var(sim.flatten(), ddof=1)
 simVar = np.array([np.var(sim[:, j] - yhat, ddof=1) / flattened_var_sim for j in range(nsim)])
 obsVar = np.var(y - yhat, ddof=1) / flattened_var_sim
-OD = float(np.mean(obsVar <= simVar))
+OD = two_sided(simVar, obsVar)
 
 # DHARMa's bootstrapped outlier test
 if bootstrap:
@@ -96,7 +98,7 @@ if bootstrap:
             SRR_boot[j] = rng.uniform(lwr, upr)
         one_zero_boot[i] = np.mean((SRR_boot <= 0) | (SRR_boot >= 1))
     one_zero_real = np.mean((SRR <= 0) | (SRR >= 1))
-    BO = float(np.mean(one_zero_boot >= one_zero_real))
+    BO = two_sided(one_zero_boot, one_zero_real)
 else:
     BO = np.nan
 
@@ -123,7 +125,7 @@ ax = axes[0]
 theor = np.linspace(1 / (n + 1), n / (n + 1), n) # Uniform order statistics
 sr_sorted = np.sort(SRR)
 ax.scatter(theor, sr_sorted, s=16)
-ax.plot([0, 1], [0, 1], color='grey', linestyle='--')
+ax.plot([0, 1], [0, 1], color='red')
 fmt_p_left = [f"{v:.3f}" if not np.isnan(v) else "NA" for v in pval_left]
 ax.text(0.1, 0.875, f"KS test p = {fmt_p_left[0]}", color=('red' if KS < 0.05 else 'black'), transform=ax.transAxes, fontsize=9)
 ax.text(0.1, 0.8, f"Dispersion test p = {fmt_p_left[1]}", color=('red' if OD < 0.05 else 'black'), transform=ax.transAxes, fontsize=9)
@@ -141,7 +143,9 @@ ax.text(0.5, 0.95, label, ha='center', color = col, transform = ax.transAxes)
 
 # Residuals vs fitted
 ax2 = axes[1]
-ax2.scatter(yhatrank, SRR, s = 16, alpha = 0.8)
+outlier = (one + zero) > 0
+ax2.scatter(yhatrank[~outlier], SRR[~outlier], s = 16, alpha = 0.8)
+ax2.scatter(yhatrank[outlier], SRR[outlier], s = 80, marker = '*', color = 'red')
 ax2.set_xlabel("Model predictions (rank transformed)")
 ax2.set_ylabel("DHARMa residual")
 ax2.set_title("DHARMa residual vs. predicted")
@@ -156,40 +160,41 @@ for q in p:
 pval_right = []
 
 newx = np.linspace(0, 1, 1000)
+
+# A centered spline plus an intercept (nu parameters in total)
+X_spline = dmatrix(f"cr(x, df={nu - 1}, constraints='center', lower_bound=0, upper_bound=1)", {"x": yhatrank})
+Xnew     = np.asarray(build_design_matrices([X_spline.design_info], {"x": newx})[0])
+X_spline = np.asarray(X_spline)
+
 for q in p:
     y_q = SRR - q
-    X_spline = dmatrix(f"cr(x, df={nu})", {"x": yhatrank}, return_type="dataframe")
-    X_spline = sm.add_constant(X_spline, has_constant="add")
 
     # fit Quantile Regression at quantile q
     qr = QuantReg(y_q, X_spline)
     Qi = qr.fit(q = q)
 
-    coef_pvalues = np.asarray(Qi.pvalues)
-    
-    # Split into parametric and smooth parts
-    p_pv = coef_pvalues[0]  # intercept
-    s_pv = coef_pvalues[1:] # spline coefficients
-  
-    pv_pair = np.array([p_pv, np.min(s_pv)])
-    _, pv_pair_adj, _, _ = multipletests(pv_pair, method="fdr_bh")
-    pval_q = float(np.min(pv_pair_adj))
+    # Test the intercept and, jointly, the spline coefficients, as DHARMa does
+    # (with fewer than 20 observations, statsmodels cannot compute these tests)
+    try:
+        p_pv = Qi.pvalues[0]
+        s_pv = float(Qi.f_test(np.eye(nu)[1:]).pvalue)
+        _, pv_pair_adj, _, _ = multipletests([p_pv, s_pv], method="fdr_bh")
+        pval_q = float(np.min(pv_pair_adj))
+    except ValueError:
+        pval_q = np.nan
     pval_right.append(pval_q)
     red_flag = (pval_q < 0.05)
 
-    Xnew = dmatrix(f"cr(x, df={nu})", {"x": newx}, return_type="dataframe")
-    Xnew = sm.add_constant(Xnew, has_constant="add")
-    params = Qi.params.values
-    ynew = Xnew.values @ params
+    ynew = Xnew @ Qi.params
 
     # Compute standard errors from covariance matrix
     covb = Qi.cov_params()
-    XV = Xnew.values @ covb.values 
-    SE = np.sqrt(np.sum(XV * Xnew.values, axis = 1))
+    XV = Xnew @ covb
+    SE = np.sqrt(np.sum(XV * Xnew, axis = 1))
 
-    # Confidence band (DHARMa 0.4.7 draws this, rather than a 95% CI)
-    lwr = ynew - SE
-    upr = ynew + SE
+    # 95% confidence band, as in DHARMa 0.5.0
+    lwr = ynew - 1.96 * SE
+    upr = ynew + 1.96 * SE
 
     # add back the quantile baseline (we fitted SRR - q)
     ynew += q
@@ -201,11 +206,18 @@ for q in p:
     ax2.plot(newx, ynew, color = color, linewidth = 2)
 
 # FDR adjustment across the 3 quantile tests
-_, p_adj2, _, _ = multipletests(pval_right, method='fdr_bh')
-if any(p_adj2 < 0.05):
-    label_right = "Significant problems detected"
+pval_right = np.array(pval_right)
+if np.isnan(pval_right).any():
+    p_adj2 = np.array([np.nan])
+else:
+    _, p_adj2, _, _ = multipletests(pval_right, method='fdr_bh')
+if np.isnan(pval_right).any():
+    label_right = "Some quantile regressions failed"
     col_right = "red"
-elif any(np.array(pval_right) < 0.05):
+elif any(p_adj2 < 0.05):
+    label_right = "Quantile deviations detected (red curves)\nCombined adjusted quantile test significant"
+    col_right = "red"
+elif any(pval_right < 0.05):
     label_right = "Quantile deviations detected (red curves)\nCombined adjusted quantile test n.s."
     col_right = "red"
 else:

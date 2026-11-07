@@ -4,7 +4,7 @@
 library("DHARMa")
 
 # Example (fill in 01, 02, or 03)
-DF <- read.csv(paste0("example-data-01.csv"))
+DF <- read.csv(paste0("example-Poisson-data-01.csv"))
 # 1: No violations
 # 2: Non-linear (on the scale of eta)
 # 3: Overdispersed
